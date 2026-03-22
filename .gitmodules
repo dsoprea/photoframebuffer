@@ -1,0 +1,3 @@
+[submodule "vendor/libpyfb"]
+	path = vendor/libpyfb
+	url = https://github.com/raspiduino/libpyfb.git
