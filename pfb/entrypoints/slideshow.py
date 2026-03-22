@@ -3,6 +3,7 @@
 import argparse
 import fnmatch
 import pathlib
+import random
 import sys
 import time
 
@@ -61,6 +62,11 @@ def main() -> None:
         metavar="PATH",
         help="Root path prepended to relative paths read from a file list",
     )
+    parser.add_argument(
+        "--random",
+        action="store_true",
+        help="Display images in random order",
+    )
 
     args = parser.parse_args()
 
@@ -69,6 +75,10 @@ def main() -> None:
     if not files:
         print("pfb_slideshow: no files found", file=sys.stderr)
         sys.exit(1)
+
+    # Shuffle the file list when random order is requested.
+    if args.random:
+        random.shuffle(files)
 
     # Open the framebuffer device once and display each image in turn.
     fb = pfb.framebuffer.Framebuffer(args.device)

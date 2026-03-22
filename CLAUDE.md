@@ -53,7 +53,7 @@ symbols by their full dotted path (e.g. `tigerstop.adapter.TigerStop`,
 | Command | Description |
 |---|---|
 | `pfb_show <device> <image>` | Display a single image |
-| `pfb_slideshow <device> <source> [--filter PATTERN] [--time SECONDS] [--root PATH]` | Slideshow from a directory or file list |
+| `pfb_slideshow <device> <source> [--filter PATTERN] [--time SECONDS] [--root PATH] [--random]` | Slideshow from a directory or file list |
 
 `<source>` for `pfb_slideshow` is either a directory path or a text file with one image path per line.
 

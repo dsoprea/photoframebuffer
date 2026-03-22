@@ -119,6 +119,29 @@ class TestSlideshowMain(unittest.TestCase):
                     pfb.entrypoints.slideshow.main()
             mock_cls.assert_called_once_with("/dev/fb1")
 
+    def test_random_flag_shuffles_order(self):
+        # With --random, files must be passed to shuffle before display.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for name in ["a.jpg", "b.jpg", "c.jpg"]:
+                (pathlib.Path(tmpdir) / name).touch()
+            mock_fb = unittest.mock.MagicMock()
+            with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0", "--random"]):
+                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
+                    with unittest.mock.patch("random.shuffle") as mock_shuffle:
+                        pfb.entrypoints.slideshow.main()
+            mock_shuffle.assert_called_once()
+
+    def test_no_random_flag_preserves_order(self):
+        # Without --random, shuffle must not be called.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            mock_fb = unittest.mock.MagicMock()
+            with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0"]):
+                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
+                    with unittest.mock.patch("random.shuffle") as mock_shuffle:
+                        pfb.entrypoints.slideshow.main()
+            mock_shuffle.assert_not_called()
+
     def test_skips_unreadable_file_and_continues(self):
         # A file that raises on display must be skipped; remaining files still shown.
         with tempfile.TemporaryDirectory() as tmpdir:
