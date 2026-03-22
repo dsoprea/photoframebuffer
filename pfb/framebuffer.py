@@ -35,7 +35,15 @@ def _load_font() -> PIL.ImageFont.FreeTypeFont | PIL.ImageFont.ImageFont:
     return PIL.ImageFont.load_default()
 
 
-def _extract_exif_text(img: PIL.Image.Image) -> str | None:
+def _extract_exif_text(
+    img: PIL.Image.Image,
+    show_timestamp: bool,
+    show_model: bool,
+) -> str | None:
+    # Nothing requested — skip EXIF entirely.
+    if not show_timestamp and not show_model:
+        return None
+
     # Attempt to read the EXIF block; silently return None on any failure.
     try:
         exif = img.getexif()
@@ -55,6 +63,12 @@ def _extract_exif_text(img: PIL.Image.Image) -> str | None:
     if model:
         model = str(model).strip()
 
+    # Apply the caller's field selection.
+    if not show_timestamp:
+        timestamp = None
+    if not show_model:
+        model = None
+
     # Build the overlay string: timestamp left of model when both are present.
     if timestamp and model:
         return f"{timestamp}  {model}"
@@ -69,11 +83,10 @@ def _overlay_text(img: PIL.Image.Image, text: str) -> PIL.Image.Image:
     draw = PIL.ImageDraw.Draw(img)
     font = _load_font()
 
-    # Measure the rendered text to find the bottom-right anchor position.
+    # Measure the rendered text to find the bottom-left anchor position.
     bbox = draw.textbbox((0, 0), text, font=font)
-    text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
-    x = img.width - text_w - _OVERLAY_PADDING
+    x = _OVERLAY_PADDING
     y = img.height - text_h - _OVERLAY_PADDING
 
     # Draw a dark outline around each character for legibility on any background.
@@ -133,16 +146,21 @@ class Framebuffer:
             pixels = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
             return pixels.tobytes()
 
-    def display_image(self, path: str) -> None:
+    def display_image(
+        self,
+        path: str,
+        show_timestamp: bool = False,
+        show_model: bool = False,
+    ) -> None:
         img = PIL.Image.open(path)
 
         # Extract EXIF text before _fit_image converts the image (which may drop EXIF).
-        exif_text = _extract_exif_text(img)
+        exif_text = _extract_exif_text(img, show_timestamp, show_model)
 
         # Scale and centre the image to fill the screen.
         img = self._fit_image(img)
 
-        # Overlay EXIF metadata in the bottom-right corner if any was found.
+        # Overlay EXIF metadata in the bottom-left corner if any was found.
         if exif_text:
             img = _overlay_text(img, exif_text)
 

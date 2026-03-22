@@ -142,6 +142,28 @@ class TestSlideshowMain(unittest.TestCase):
                         pfb.entrypoints.slideshow.main()
             mock_shuffle.assert_not_called()
 
+    def test_timestamp_flag_passed_to_display_image(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            mock_fb = unittest.mock.MagicMock()
+            with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0", "--timestamp"]):
+                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
+                    pfb.entrypoints.slideshow.main()
+            mock_fb.display_image.assert_called_once_with(
+                unittest.mock.ANY, show_timestamp=True, show_model=False
+            )
+
+    def test_model_flag_passed_to_display_image(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            mock_fb = unittest.mock.MagicMock()
+            with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0", "--model"]):
+                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
+                    pfb.entrypoints.slideshow.main()
+            mock_fb.display_image.assert_called_once_with(
+                unittest.mock.ANY, show_timestamp=False, show_model=True
+            )
+
     def test_skips_unreadable_file_and_continues(self):
         # A file that raises on display must be skipped; remaining files still shown.
         with tempfile.TemporaryDirectory() as tmpdir:
