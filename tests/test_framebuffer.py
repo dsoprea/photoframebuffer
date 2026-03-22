@@ -120,6 +120,73 @@ class TestEncode16bpp(unittest.TestCase):
         self.assertEqual(len(fb._encode(img)), 24)
 
 
+class TestExtractExifText(unittest.TestCase):
+    def _make_img(self, exif_dict: dict) -> PIL.Image.Image:
+        # Return a mock image whose getexif() returns the given dict.
+        img = unittest.mock.MagicMock(spec=PIL.Image.Image)
+        img.getexif.return_value = exif_dict
+        return img
+
+    def test_both_timestamp_and_model(self):
+        # When both fields are present, timestamp appears to the left of model.
+        img = self._make_img({36867: "2024:01:15 10:30:00", 272: "Canon EOS R5"})
+        self.assertEqual(
+            pfb.framebuffer._extract_exif_text(img),
+            "2024:01:15 10:30:00  Canon EOS R5",
+        )
+
+    def test_timestamp_only(self):
+        img = self._make_img({36867: "2024:01:15 10:30:00"})
+        self.assertEqual(pfb.framebuffer._extract_exif_text(img), "2024:01:15 10:30:00")
+
+    def test_model_only(self):
+        img = self._make_img({272: "Nikon Z9"})
+        self.assertEqual(pfb.framebuffer._extract_exif_text(img), "Nikon Z9")
+
+    def test_falls_back_to_datetime_when_original_absent(self):
+        # Tag 306 (DateTime) is used when 36867 (DateTimeOriginal) is missing.
+        img = self._make_img({306: "2024:06:01 08:00:00"})
+        self.assertEqual(pfb.framebuffer._extract_exif_text(img), "2024:06:01 08:00:00")
+
+    def test_prefers_datetime_original_over_datetime(self):
+        img = self._make_img({36867: "2024:01:15 10:30:00", 306: "2024:01:01 00:00:00"})
+        result = pfb.framebuffer._extract_exif_text(img)
+        self.assertIn("2024:01:15 10:30:00", result)
+
+    def test_strips_whitespace_from_fields(self):
+        img = self._make_img({272: "  Sony A7 IV  "})
+        self.assertEqual(pfb.framebuffer._extract_exif_text(img), "Sony A7 IV")
+
+    def test_no_relevant_tags_returns_none(self):
+        img = self._make_img({271: "Canon"})  # Make only, no Model or DateTime
+        self.assertIsNone(pfb.framebuffer._extract_exif_text(img))
+
+    def test_empty_exif_returns_none(self):
+        img = self._make_img({})
+        self.assertIsNone(pfb.framebuffer._extract_exif_text(img))
+
+    def test_getexif_exception_returns_none(self):
+        # If EXIF cannot be read at all, None must be returned without raising.
+        img = unittest.mock.MagicMock(spec=PIL.Image.Image)
+        img.getexif.side_effect = Exception("no exif")
+        self.assertIsNone(pfb.framebuffer._extract_exif_text(img))
+
+
+class TestOverlayText(unittest.TestCase):
+    def test_image_size_unchanged(self):
+        # Overlaying text must not change the image dimensions.
+        img = PIL.Image.new("RGB", (200, 100), (0, 0, 0))
+        result = pfb.framebuffer._overlay_text(img, "2024:01:15  Canon EOS R5")
+        self.assertEqual(result.size, (200, 100))
+
+    def test_bottom_right_pixels_modified(self):
+        # The bottom-right area must differ from a plain black image after overlay.
+        plain = PIL.Image.new("RGB", (400, 200), (0, 0, 0))
+        overlaid = PIL.Image.new("RGB", (400, 200), (0, 0, 0))
+        pfb.framebuffer._overlay_text(overlaid, "Hello")
+        self.assertNotEqual(numpy.array(plain).tolist(), numpy.array(overlaid).tolist())
+
+
 class TestDisplayImage(unittest.TestCase):
     def test_seeks_to_zero_before_write(self):
         # display_image must seek to offset 0 before writing so prior content is overwritten.
@@ -149,6 +216,26 @@ class TestDisplayImage(unittest.TestCase):
             fb.display_image("/fake/image.jpg")
         written = mock_libpyfb_fb.fb.write.call_args[0][0]
         self.assertEqual(len(written), 24)
+
+    def test_exif_overlay_called_when_text_found(self):
+        # _overlay_text must be called when EXIF data yields a non-empty string.
+        fb, mock_libpyfb_fb = _make_fb(100, 100, 32)
+        mock_img = PIL.Image.new("RGB", (100, 100))
+        mock_img.getexif = lambda: {272: "Canon EOS R5"}
+        with unittest.mock.patch("PIL.Image.open", return_value=mock_img):
+            with unittest.mock.patch("pfb.framebuffer._overlay_text", wraps=pfb.framebuffer._overlay_text) as mock_overlay:
+                fb.display_image("/fake/image.jpg")
+        mock_overlay.assert_called_once()
+
+    def test_exif_overlay_not_called_when_no_exif(self):
+        # _overlay_text must not be called when the image has no usable EXIF.
+        fb, mock_libpyfb_fb = _make_fb(100, 100, 32)
+        mock_img = PIL.Image.new("RGB", (100, 100))
+        mock_img.getexif = lambda: {}
+        with unittest.mock.patch("PIL.Image.open", return_value=mock_img):
+            with unittest.mock.patch("pfb.framebuffer._overlay_text") as mock_overlay:
+                fb.display_image("/fake/image.jpg")
+        mock_overlay.assert_not_called()
 
 
 if __name__ == "__main__":

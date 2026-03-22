@@ -11,7 +11,7 @@ Principal package: `pfb`
 ```
 pfb/
   libpyfb.py          # vendored libpyfb (raspiduino/libpyfb)
-  framebuffer.py      # Framebuffer class wrapping libpyfb
+  framebuffer.py      # Framebuffer class, EXIF overlay helpers
   entrypoints/        # one module per console script
     show.py           # pfb_show
     slideshow.py      # pfb_slideshow
