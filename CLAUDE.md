@@ -61,6 +61,8 @@ symbols by their full dotted path (e.g. `tigerstop.adapter.TigerStop`,
 
 During a slideshow, the left arrow key goes to the previous image and the right arrow key skips to the next. Images also advance automatically after `--time` seconds with no key press.
 
+The slideshow loops indefinitely. When the list is exhausted it restarts from the beginning; if `--random` was given the list is reshuffled before each loop.
+
 ## Conventions
 
 - All console script entry points live in `pfb/entrypoints/`

@@ -156,17 +156,50 @@ class TestWaitForKey(unittest.TestCase):
 
 
 class TestSlideshowMain(unittest.TestCase):
-    def _run(self, tmpdir: str, extra_args: list[str] = (), keys: list = ()) -> unittest.mock.MagicMock:
-        """Run main() with a mocked framebuffer and pre-canned key sequence."""
+    def _run(
+        self,
+        tmpdir: str,
+        extra_args: list[str] = (),
+        keys: list = (),
+        max_displays: int | None = None,
+        display_side_effects: list | None = None,
+    ) -> unittest.mock.MagicMock:
+        """Run main(), stopping after max_displays calls to display_image.
+
+        _wait_for_key is mocked to return pre-canned keys then None (timeout).
+        A private _Stop exception terminates the infinite loop once max_displays
+        images have been shown, avoiding the need for any real sleeping.
+        """
+        if max_displays is None:
+            max_displays = sum(1 for p in pathlib.Path(tmpdir).iterdir() if p.is_file())
+
         mock_fb = unittest.mock.MagicMock()
-        key_iter = iter(list(keys) + [None] * 100)
+        if display_side_effects is not None:
+            mock_fb.display_image.side_effect = display_side_effects
+
+        key_list = list(keys)
+
+        class _Stop(Exception):
+            pass
+
+        def _key_side_effect(timeout):
+            # Stop once max_displays images have been shown.
+            n = mock_fb.display_image.call_count
+            if n >= max_displays:
+                raise _Stop()
+            # Return the pre-canned key for this display index, or None on timeout.
+            return key_list[n - 1] if n - 1 < len(key_list) else None
+
         argv = ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0"] + list(extra_args)
         with unittest.mock.patch("sys.argv", argv):
             with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
                 with unittest.mock.patch(
-                    "pfb.entrypoints.slideshow._wait_for_key", side_effect=key_iter
+                    "pfb.entrypoints.slideshow._wait_for_key", side_effect=_key_side_effect
                 ):
-                    pfb.entrypoints.slideshow.main()
+                    try:
+                        pfb.entrypoints.slideshow.main()
+                    except _Stop:
+                        pass
         return mock_fb
 
     def test_exits_when_no_files_found(self):
@@ -177,7 +210,7 @@ class TestSlideshowMain(unittest.TestCase):
                 self.assertEqual(ctx.exception.code, 1)
 
     def test_displays_each_file(self):
-        # Every file in the source must be passed to display_image exactly once.
+        # Every file must be displayed once per pass.
         with tempfile.TemporaryDirectory() as tmpdir:
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             (pathlib.Path(tmpdir) / "b.jpg").touch()
@@ -188,10 +221,24 @@ class TestSlideshowMain(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             mock_fb = unittest.mock.MagicMock()
+
+            class _Stop(Exception):
+                pass
+
+            def _key_side_effect(timeout):
+                if mock_fb.display_image.call_count >= 1:
+                    raise _Stop()
+                return None
+
             with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb1", tmpdir, "--time", "0"]):
                 with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb) as mock_cls:
-                    with unittest.mock.patch("pfb.entrypoints.slideshow._wait_for_key", return_value=None):
-                        pfb.entrypoints.slideshow.main()
+                    with unittest.mock.patch(
+                        "pfb.entrypoints.slideshow._wait_for_key", side_effect=_key_side_effect
+                    ):
+                        try:
+                            pfb.entrypoints.slideshow.main()
+                        except _Stop:
+                            pass
             mock_cls.assert_called_once_with("/dev/fb1")
 
     def test_right_key_advances_to_next_image(self):
@@ -209,8 +256,8 @@ class TestSlideshowMain(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             (pathlib.Path(tmpdir) / "b.jpg").touch()
-            # timeout → advance to b, then left → back to a, then timeout → advance past end
-            mock_fb = self._run(tmpdir, keys=[None, "left"])
+            # timeout → b, left → back to a, then stop
+            mock_fb = self._run(tmpdir, keys=[None, "left"], max_displays=3)
             displayed = [c.args[0] for c in mock_fb.display_image.call_args_list]
             self.assertTrue(displayed[0].endswith("a.jpg"))
             self.assertTrue(displayed[1].endswith("b.jpg"))
@@ -221,36 +268,55 @@ class TestSlideshowMain(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             (pathlib.Path(tmpdir) / "b.jpg").touch()
-            mock_fb = self._run(tmpdir, keys=["left", "left"])
+            mock_fb = self._run(tmpdir, keys=["left", "left"], max_displays=3)
             displayed = [c.args[0] for c in mock_fb.display_image.call_args_list]
             # First three displays are all a.jpg (left keeps index at 0).
             self.assertTrue(all(p.endswith("a.jpg") for p in displayed[:3]))
 
+    def test_loops_after_list_exhausted(self):
+        # After the last image the slideshow must loop back to the first.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            (pathlib.Path(tmpdir) / "b.jpg").touch()
+            mock_fb = self._run(tmpdir, max_displays=3)
+            displayed = [c.args[0] for c in mock_fb.display_image.call_args_list]
+            # Third display must be the first file again.
+            self.assertEqual(displayed[0], displayed[2])
+
+    def test_reshuffles_on_loop_with_random(self):
+        # With --random, the list must be reshuffled at the start of each loop.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            (pathlib.Path(tmpdir) / "b.jpg").touch()
+            with unittest.mock.patch("random.shuffle") as mock_shuffle:
+                self._run(tmpdir, extra_args=["--random"], max_displays=3)
+            # Once for the initial shuffle, once when the list wraps around.
+            self.assertEqual(mock_shuffle.call_count, 2)
+
+    def test_no_reshuffle_on_loop_without_random(self):
+        # Without --random, shuffle must never be called, even across loops.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            (pathlib.Path(tmpdir) / "b.jpg").touch()
+            with unittest.mock.patch("random.shuffle") as mock_shuffle:
+                self._run(tmpdir, max_displays=3)
+            mock_shuffle.assert_not_called()
+
     def test_random_flag_shuffles_order(self):
-        # With --random, files must be passed to shuffle before display.
+        # With --random, files must be shuffled before the first pass.
         with tempfile.TemporaryDirectory() as tmpdir:
             for name in ["a.jpg", "b.jpg", "c.jpg"]:
                 (pathlib.Path(tmpdir) / name).touch()
-            mock_fb = unittest.mock.MagicMock()
-            argv = ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0", "--random"]
-            with unittest.mock.patch("sys.argv", argv):
-                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
-                    with unittest.mock.patch("pfb.entrypoints.slideshow._wait_for_key", return_value=None):
-                        with unittest.mock.patch("random.shuffle") as mock_shuffle:
-                            pfb.entrypoints.slideshow.main()
-            mock_shuffle.assert_called_once()
+            with unittest.mock.patch("random.shuffle") as mock_shuffle:
+                self._run(tmpdir, extra_args=["--random"])
+            self.assertGreaterEqual(mock_shuffle.call_count, 1)
 
     def test_no_random_flag_preserves_order(self):
-        # Without --random, shuffle must not be called.
+        # Without --random, shuffle must not be called on the first pass.
         with tempfile.TemporaryDirectory() as tmpdir:
             (pathlib.Path(tmpdir) / "a.jpg").touch()
-            mock_fb = unittest.mock.MagicMock()
-            argv = ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0"]
-            with unittest.mock.patch("sys.argv", argv):
-                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
-                    with unittest.mock.patch("pfb.entrypoints.slideshow._wait_for_key", return_value=None):
-                        with unittest.mock.patch("random.shuffle") as mock_shuffle:
-                            pfb.entrypoints.slideshow.main()
+            with unittest.mock.patch("random.shuffle") as mock_shuffle:
+                self._run(tmpdir)
             mock_shuffle.assert_not_called()
 
     def test_timestamp_flag_passed_to_display_image(self):
@@ -274,13 +340,10 @@ class TestSlideshowMain(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             (pathlib.Path(tmpdir) / "b.jpg").touch()
-            mock_fb = unittest.mock.MagicMock()
-            mock_fb.display_image.side_effect = [OSError("unreadable"), None]
-            argv = ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0"]
-            with unittest.mock.patch("sys.argv", argv):
-                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
-                    with unittest.mock.patch("pfb.entrypoints.slideshow._wait_for_key", return_value=None):
-                        pfb.entrypoints.slideshow.main()
+            mock_fb = self._run(
+                tmpdir,
+                display_side_effects=[OSError("unreadable"), None],
+            )
             self.assertEqual(mock_fb.display_image.call_count, 2)
 
 

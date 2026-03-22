@@ -152,7 +152,13 @@ def main() -> None:
 
     # Iterate by index so left/right keys can move backwards and forwards.
     index = 0
-    while 0 <= index < len(files):
+    while True:
+        # When the end of the list is reached, reshuffle if requested and loop.
+        if index >= len(files):
+            if args.random:
+                random.shuffle(files)
+            index = 0
+
         path = files[index]
         print(f"displaying: {path}")
         try:
