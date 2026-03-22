@@ -15,6 +15,10 @@ pfb/
   entrypoints/        # one module per console script
     show.py           # pfb_show
     slideshow.py      # pfb_slideshow
+tests/
+  test_framebuffer.py
+  test_show.py
+  test_slideshow.py
 ```
 
 ## Script Argument Style
@@ -57,7 +61,18 @@ symbols by their full dotted path (e.g. `tigerstop.adapter.TigerStop`,
 
 - All console script entry points live in `pfb/entrypoints/`
 - Framebuffer writes go through `pfb.framebuffer.Framebuffer`, which uses libpyfb internally
-- libpyfb lives at `pfb/libpyfb.py` and is imported as `from pfb import libpyfb`
+- libpyfb lives at `pfb/libpyfb.py` and is imported as `import pfb.libpyfb`
+- Every logical block of code must have a comment
+
+## Tests
+
+Run with:
+
+```
+python -m unittest discover -v tests/
+```
+
+Tests mock `pfb.libpyfb.Framebuffer` to avoid requiring real hardware.
 
 ## Install
 
