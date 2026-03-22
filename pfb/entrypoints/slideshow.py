@@ -2,12 +2,20 @@
 
 import argparse
 import fnmatch
+import os
 import pathlib
 import random
+import select
 import sys
+import termios
 import time
+import tty
 
 import pfb.framebuffer
+
+# Escape sequences produced by the left and right arrow keys.
+_KEY_LEFT = "\x1b[D"
+_KEY_RIGHT = "\x1b[C"
 
 
 def _collect_files(source: str, filter_pattern: str | None, root: str | None) -> list[str]:
@@ -31,6 +39,55 @@ def _collect_files(source: str, filter_pattern: str | None, root: str | None) ->
         files = [f for f in files if fnmatch.fnmatch(pathlib.Path(f).name, filter_pattern)]
 
     return files
+
+
+def _read_key(timeout: float) -> str | None:
+    """Wait up to timeout seconds for a key press in raw terminal mode.
+
+    Returns 'left', 'right', or None on timeout or unrecognised key.
+    Must be called with the terminal already in raw mode.
+    """
+    # Wait for stdin to become readable within the timeout period.
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if not ready:
+        return None
+
+    # Read the first byte of the key sequence.
+    ch = sys.stdin.read(1)
+
+    # Arrow keys send a 3-byte escape sequence: ESC [ <letter>.
+    # Read the remaining two bytes with a short timeout to avoid blocking.
+    if ch == "\x1b":
+        ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+        if ready:
+            ch += sys.stdin.read(2)
+
+    # Map recognised sequences to logical key names.
+    if ch == _KEY_LEFT:
+        return "left"
+    if ch == _KEY_RIGHT:
+        return "right"
+    return None
+
+
+def _wait_for_key(timeout: float) -> str | None:
+    """Wait up to timeout seconds for a navigation key.
+
+    Puts the terminal in raw mode if stdin is a tty; otherwise falls back to
+    a plain sleep and returns None.
+    """
+    # Raw mode requires an interactive terminal — fall back to sleep otherwise.
+    if not os.isatty(sys.stdin.fileno()):
+        time.sleep(timeout)
+        return None
+
+    # Save terminal state, switch to raw mode, then restore on exit.
+    old_term = termios.tcgetattr(sys.stdin)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        return _read_key(timeout)
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_term)
 
 
 def main() -> None:
@@ -90,15 +147,26 @@ def main() -> None:
     if args.random:
         random.shuffle(files)
 
-    # Open the framebuffer device once and display each image in turn.
+    # Open the framebuffer device once for the duration of the slideshow.
     fb = pfb.framebuffer.Framebuffer(args.device)
 
-    for path in files:
+    # Iterate by index so left/right keys can move backwards and forwards.
+    index = 0
+    while 0 <= index < len(files):
+        path = files[index]
         print(f"displaying: {path}")
         try:
             fb.display_image(path, show_timestamp=args.timestamp, show_model=args.model)
         except Exception as exc:
             print(f"pfb_slideshow: skipping {path}: {exc}", file=sys.stderr)
+            index += 1
             continue
-        # Hold the image on screen for the configured duration.
-        time.sleep(args.time)
+
+        # Wait for a navigation key or the display timeout.
+        key = _wait_for_key(args.time)
+
+        # Left moves back one image; right or timeout advances.
+        if key == "left":
+            index = max(0, index - 1)
+        else:
+            index += 1

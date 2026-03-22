@@ -59,6 +59,8 @@ symbols by their full dotted path (e.g. `tigerstop.adapter.TigerStop`,
 
 `--timestamp` overlays the EXIF timestamp in the bottom-left corner. `--model` overlays the EXIF camera model. When both are given, timestamp appears to the left of model.
 
+During a slideshow, the left arrow key goes to the previous image and the right arrow key skips to the next. Images also advance automatically after `--time` seconds with no key press.
+
 ## Conventions
 
 - All console script entry points live in `pfb/entrypoints/`
