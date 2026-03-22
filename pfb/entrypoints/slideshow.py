@@ -56,11 +56,15 @@ def _read_key(timeout: float) -> str | None:
     ch = sys.stdin.read(1)
 
     # Arrow keys send a 3-byte escape sequence: ESC [ <letter>.
-    # Read the remaining two bytes with a short timeout to avoid blocking.
+    # Read the remaining two bytes one at a time; raw mode (VMIN=1) may
+    # return fewer bytes than requested from a single read() call.
     if ch == "\x1b":
         ready, _, _ = select.select([sys.stdin], [], [], 0.05)
         if ready:
-            ch += sys.stdin.read(2)
+            ch += sys.stdin.read(1)
+            ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+            if ready:
+                ch += sys.stdin.read(1)
 
     # Map recognised sequences to logical key names.
     if ch == _KEY_LEFT:
