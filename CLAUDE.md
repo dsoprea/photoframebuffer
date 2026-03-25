@@ -86,6 +86,13 @@ Tests mock `pfb.libpyfb.Framebuffer` to avoid requiring real hardware.
 pip install -e .
 ```
 
+`pyproject.toml` explicitly lists packages under `[tool.setuptools]`:
+
+```toml
+[tool.setuptools]
+packages = ["pfb", "pfb.entrypoints"]
+```
+
 ## Dependencies
 
 - Pillow

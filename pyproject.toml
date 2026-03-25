@@ -12,6 +12,9 @@ dependencies = [
     "numpy>=1.24",
 ]
 
+[tool.setuptools]
+packages = ["pfb", "pfb.entrypoints"]
+
 [project.scripts]
 pfb_slideshow = "pfb.entrypoints.slideshow:main"
 pfb_show = "pfb.entrypoints.show:main"
