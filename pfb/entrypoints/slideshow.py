@@ -13,9 +13,9 @@ import tty
 
 import pfb.framebuffer
 
-# Escape sequences produced by the left and right arrow keys.
-_KEY_LEFT = "\x1b[D"
-_KEY_RIGHT = "\x1b[C"
+# Escape sequences produced by the left and right arrow keys (ANSI VT100).
+_KEY_LEFT = b"\x1b[D"
+_KEY_RIGHT = b"\x1b[C"
 
 
 def _collect_files(source: str, filter_pattern: str | None, root: str | None) -> list[str]:
@@ -46,25 +46,27 @@ def _read_key(timeout: float) -> str | None:
 
     Returns 'left', 'right', or None on timeout or unrecognised key.
     Must be called with the terminal already in raw mode.
+    Uses os.read() on the raw fd to bypass Python's buffered text-mode stdin.
     """
+    fd = sys.stdin.fileno()
+
     # Wait for stdin to become readable within the timeout period.
-    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    ready, _, _ = select.select([fd], [], [], timeout)
     if not ready:
         return None
 
     # Read the first byte of the key sequence.
-    ch = sys.stdin.read(1)
+    ch = os.read(fd, 1)
 
     # Arrow keys send a 3-byte escape sequence: ESC [ <letter>.
-    # Read the remaining two bytes one at a time; raw mode (VMIN=1) may
-    # return fewer bytes than requested from a single read() call.
-    if ch == "\x1b":
-        ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+    # Read the remaining two bytes one at a time with short timeouts.
+    if ch == b"\x1b":
+        ready, _, _ = select.select([fd], [], [], 0.05)
         if ready:
-            ch += sys.stdin.read(1)
-            ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+            ch += os.read(fd, 1)
+            ready, _, _ = select.select([fd], [], [], 0.05)
             if ready:
-                ch += sys.stdin.read(1)
+                ch += os.read(fd, 1)
 
     # Map recognised sequences to logical key names.
     if ch == _KEY_LEFT:
@@ -175,8 +177,8 @@ def main() -> None:
         # Wait for a navigation key or the display timeout.
         key = _wait_for_key(args.time)
 
-        # Left moves back one image; right or timeout advances.
+        # Left moves to the previous image; right or timeout advances to the next.
         if key == "left":
             index = max(0, index - 1)
-        else:
+        elif key == "right" or key is None:
             index += 1
