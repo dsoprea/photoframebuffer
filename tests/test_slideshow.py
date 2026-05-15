@@ -324,7 +324,10 @@ class TestSlideshowMain(unittest.TestCase):
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             mock_fb = self._run(tmpdir, extra_args=["--timestamp"])
             mock_fb.display_image.assert_called_once_with(
-                unittest.mock.ANY, show_timestamp=True, show_model=False
+                unittest.mock.ANY,
+                show_timestamp=True,
+                show_model=False,
+                slideshow_gutter=True,
             )
 
     def test_model_flag_passed_to_display_image(self):
@@ -332,7 +335,10 @@ class TestSlideshowMain(unittest.TestCase):
             (pathlib.Path(tmpdir) / "a.jpg").touch()
             mock_fb = self._run(tmpdir, extra_args=["--model"])
             mock_fb.display_image.assert_called_once_with(
-                unittest.mock.ANY, show_timestamp=False, show_model=True
+                unittest.mock.ANY,
+                show_timestamp=False,
+                show_model=True,
+                slideshow_gutter=True,
             )
 
     def test_skips_unreadable_file_and_continues(self):

@@ -168,7 +168,12 @@ def main() -> None:
         path = files[index]
         print(f"displaying: {path}")
         try:
-            fb.display_image(path, show_timestamp=args.timestamp, show_model=args.model)
+            fb.display_image(
+                path,
+                show_timestamp=args.timestamp,
+                show_model=args.model,
+                slideshow_gutter=True,
+            )
         except Exception as exc:
             print(f"pfb_slideshow: skipping {path}: {exc}", file=sys.stderr)
             index += 1

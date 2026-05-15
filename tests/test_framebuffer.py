@@ -120,6 +120,67 @@ class TestEncode16bpp(unittest.TestCase):
         self.assertEqual(len(fb._encode(img)), 24)
 
 
+class TestExtractExifTimestampModel(unittest.TestCase):
+    def _make_img(self, exif_dict: dict) -> PIL.Image.Image:
+        # Return a mock image whose getexif() returns the given dict.
+        img = unittest.mock.MagicMock(spec=PIL.Image.Image)
+        img.getexif.return_value = exif_dict
+        return img
+
+    def test_returns_both_when_present(self):
+        img = self._make_img({36867: "2024:01:15 10:30:00", 272: "Canon EOS R5"})
+        ts, model = pfb.framebuffer._extract_exif_timestamp_model(img)
+        self.assertEqual(ts, "2024:01:15 10:30:00")
+        self.assertEqual(model, "Canon EOS R5")
+
+    def test_timestamp_only(self):
+        img = self._make_img({36867: "2024:01:15 10:30:00"})
+        ts, model = pfb.framebuffer._extract_exif_timestamp_model(img)
+        self.assertEqual(ts, "2024:01:15 10:30:00")
+        self.assertIsNone(model)
+
+    def test_model_only(self):
+        img = self._make_img({272: "Nikon Z9"})
+        ts, model = pfb.framebuffer._extract_exif_timestamp_model(img)
+        self.assertIsNone(ts)
+        self.assertEqual(model, "Nikon Z9")
+
+    def test_falls_back_to_datetime_when_original_absent(self):
+        img = self._make_img({306: "2024:06:01 08:00:00"})
+        ts, model = pfb.framebuffer._extract_exif_timestamp_model(img)
+        self.assertEqual(ts, "2024:06:01 08:00:00")
+        self.assertIsNone(model)
+
+    def test_getexif_exception_returns_none_tuple(self):
+        img = unittest.mock.MagicMock(spec=PIL.Image.Image)
+        img.getexif.side_effect = Exception("no exif")
+        ts, model = pfb.framebuffer._extract_exif_timestamp_model(img)
+        self.assertIsNone(ts)
+        self.assertIsNone(model)
+
+
+class TestSlideshowGutterLine(unittest.TestCase):
+    def test_joins_basename_model_timestamp_in_that_order(self):
+        lines: list[str] = []
+
+        def _capture(_draw, _x, _y, text, _font):
+            lines.append(text)
+
+        img = PIL.Image.new("RGB", (320, 80))
+        with unittest.mock.patch(
+            "pfb.framebuffer._draw_white_outlined_text",
+            side_effect=_capture,
+        ):
+            pfb.framebuffer._draw_slideshow_gutter(
+                img,
+                40,
+                "/photos/vacation/beach.jpg",
+                "2024:07:04 12:00:00",
+                "RICOH GR III",
+            )
+        self.assertEqual(lines[-1], "beach.jpg    RICOH GR III    2024:07:04 12:00:00")
+
+
 class TestExtractExifText(unittest.TestCase):
     def _make_img(self, exif_dict: dict) -> PIL.Image.Image:
         # Return a mock image whose getexif() returns the given dict.
