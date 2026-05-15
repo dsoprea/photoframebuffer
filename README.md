@@ -30,3 +30,4 @@ pfb_slideshow /dev/fb0 /frame/images.txt --root /frame --time 300 --random
 - Can randomize images
 - Can control the delay between images
 - Press left/right cursor to navigate through images
+- Plays in a loop
