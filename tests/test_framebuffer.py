@@ -285,6 +285,21 @@ class TestOverlayText(unittest.TestCase):
         self.assertNotEqual(numpy.array(plain).tolist(), numpy.array(overlaid).tolist())
 
 
+class TestClear(unittest.TestCase):
+    def test_seeks_and_writes_full_frame(self):
+        fb, mock_libpyfb_fb = _make_fb(4, 3, 32)
+        fb.clear()
+        mock_libpyfb_fb.fb.seek.assert_called_once_with(0)
+        written = mock_libpyfb_fb.fb.write.call_args[0][0]
+        self.assertEqual(len(written), 4 * 3 * 4)
+
+    def test_16bpp_output_length(self):
+        fb, mock_libpyfb_fb = _make_fb(5, 2, 16)
+        fb.clear()
+        written = mock_libpyfb_fb.fb.write.call_args[0][0]
+        self.assertEqual(len(written), 5 * 2 * 2)
+
+
 class TestDisplayImage(unittest.TestCase):
     def test_seeks_to_zero_before_write(self):
         # display_image must seek to offset 0 before writing so prior content is overwritten.

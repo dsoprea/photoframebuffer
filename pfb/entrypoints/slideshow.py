@@ -189,6 +189,7 @@ def main() -> None:
         if key == "left":
             index = max(0, index - 1)
         elif key == "quit":
+            fb.clear()
             sys.exit(0)
         elif key == "right" or key is None:
             index += 1

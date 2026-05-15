@@ -239,6 +239,13 @@ class Framebuffer:
             pixels = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
             return pixels.tobytes()
 
+    def clear(self) -> None:
+        # Fill the framebuffer with black using the same encoding path as display_image.
+        blank = PIL.Image.new("RGB", (self.width, self.height), (0, 0, 0))
+        data = self._encode(blank)
+        self._fb.fb.seek(0)
+        self._fb.fb.write(data)
+
     def display_image(
         self,
         path: str,

@@ -379,6 +379,7 @@ class TestSlideshowMain(unittest.TestCase):
                             pfb.entrypoints.slideshow.main()
             self.assertEqual(ctx.exception.code, 0)
             mock_fb.display_image.assert_called_once()
+            mock_fb.clear.assert_called_once()
 
 
 if __name__ == "__main__":
