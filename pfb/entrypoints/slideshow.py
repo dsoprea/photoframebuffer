@@ -44,7 +44,7 @@ def _collect_files(source: str, filter_pattern: str | None, root: str | None) ->
 def _read_key(timeout: float) -> str | None:
     """Wait up to timeout seconds for a key press in raw terminal mode.
 
-    Returns 'left', 'right', or None on timeout or unrecognised key.
+    Returns 'left', 'right', 'quit' (Escape alone), or None on timeout or unrecognised key.
     Must be called with the terminal already in raw mode.
     Uses os.read() on the raw fd to bypass Python's buffered text-mode stdin.
     """
@@ -73,6 +73,9 @@ def _read_key(timeout: float) -> str | None:
         return "left"
     if ch == _KEY_RIGHT:
         return "right"
+    # Lone ESC (or Ctrl+[) quits; arrow keys are longer sequences handled above.
+    if ch == b"\x1b":
+        return "quit"
     return None
 
 
@@ -185,5 +188,7 @@ def main() -> None:
         # Left moves to the previous image; right or timeout advances to the next.
         if key == "left":
             index = max(0, index - 1)
+        elif key == "quit":
+            sys.exit(0)
         elif key == "right" or key is None:
             index += 1

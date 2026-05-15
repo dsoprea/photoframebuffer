@@ -92,31 +92,43 @@ class TestCollectFilesFilter(unittest.TestCase):
 
 
 class TestReadKey(unittest.TestCase):
-    def _call(self, stdin_bytes: str, select_ready: bool = True) -> str | None:
-        # Simulate select reporting stdin ready, then stdin.read returning the given bytes.
-        select_result = ([unittest.mock.sentinel.stdin], [], []) if select_ready else ([], [], [])
-        with unittest.mock.patch("select.select", return_value=select_result):
-            with unittest.mock.patch("sys.stdin") as mock_stdin:
-                # First read returns the first char; subsequent reads return the rest.
-                chars = list(stdin_bytes)
-                mock_stdin.read.side_effect = ["".join(chars[:1]), "".join(chars[1:])]
+    def _call(self, stdin_bytes: bytes) -> str | None:
+        # Mirror stdin by slicing the same buffer os.read would consume.
+        buf = bytearray(stdin_bytes)
+
+        def fake_read(_fd, nbytes):
+            n = min(nbytes, len(buf))
+            chunk = bytes(buf[:n])
+            del buf[:n]
+            return chunk
+
+        def fake_select(rlist, wlist, xlist, timeout=None):
+            # Ready whenever there are bytes left for the next os.read.
+            if buf:
+                return (rlist, [], [])
+            return ([], [], [])
+
+        with unittest.mock.patch("select.select", side_effect=fake_select):
+            with unittest.mock.patch("os.read", side_effect=fake_read):
                 return pfb.entrypoints.slideshow._read_key(5.0)
 
     def test_left_arrow(self):
-        self.assertEqual(self._call("\x1b[D"), "left")
+        self.assertEqual(self._call(b"\x1b[D"), "left")
 
     def test_right_arrow(self):
-        self.assertEqual(self._call("\x1b[C"), "right")
+        self.assertEqual(self._call(b"\x1b[C"), "right")
+
+    def test_escape_quits(self):
+        self.assertEqual(self._call(b"\x1b"), "quit")
 
     def test_timeout_returns_none(self):
         # When select reports stdin not ready, None must be returned.
-        select_result = ([], [], [])
-        with unittest.mock.patch("select.select", return_value=select_result):
+        with unittest.mock.patch("select.select", return_value=([], [], [])):
             result = pfb.entrypoints.slideshow._read_key(5.0)
         self.assertIsNone(result)
 
     def test_unrecognised_key_returns_none(self):
-        self.assertIsNone(self._call("x"))
+        self.assertIsNone(self._call(b"x"))
 
 
 class TestWaitForKey(unittest.TestCase):
@@ -351,6 +363,22 @@ class TestSlideshowMain(unittest.TestCase):
                 display_side_effects=[OSError("unreadable"), None],
             )
             self.assertEqual(mock_fb.display_image.call_count, 2)
+
+    def test_quit_key_exits(self):
+        # Escape must end the slideshow without looping to another image.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            (pathlib.Path(tmpdir) / "b.jpg").touch()
+            mock_fb = unittest.mock.MagicMock()
+            with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0"]):
+                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
+                    with unittest.mock.patch(
+                        "pfb.entrypoints.slideshow._wait_for_key", return_value="quit"
+                    ):
+                        with self.assertRaises(SystemExit) as ctx:
+                            pfb.entrypoints.slideshow.main()
+            self.assertEqual(ctx.exception.code, 0)
+            mock_fb.display_image.assert_called_once()
 
 
 if __name__ == "__main__":
