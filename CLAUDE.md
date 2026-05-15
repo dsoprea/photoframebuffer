@@ -11,7 +11,7 @@ Principal package: `pfb`
 ```
 pfb/
   libpyfb.py          # vendored libpyfb (raspiduino/libpyfb)
-  framebuffer.py      # Framebuffer class, EXIF overlay helpers
+  framebuffer.py      # Framebuffer class; slideshow footer gutter
   entrypoints/        # one module per console script
     show.py           # pfb_show
     slideshow.py      # pfb_slideshow
@@ -52,14 +52,12 @@ symbols by their full dotted path (e.g. `tigerstop.adapter.TigerStop`,
 
 | Command | Description |
 |---|---|
-| `pfb_show <device> <image> [--timestamp] [--model]` | Display a single image |
-| `pfb_slideshow <device> <source> [--filter PATTERN] [--time SECONDS] [--root PATH] [--random] [--timestamp] [--model]` | Slideshow from a directory or file list |
+| `pfb_show <device> <image>` | Display a single image |
+| `pfb_slideshow <device> <source> [--filter PATTERN] [--time SECONDS] [--root PATH] [--random]` | Slideshow from a directory or file list |
 
 `<source>` for `pfb_slideshow` is either a directory path or a text file with one image path per line.
 
-`--timestamp` overlays the EXIF timestamp in the bottom-left corner. `--model` overlays the EXIF camera model. When both are given, timestamp appears to the left of model.
-
-During a slideshow, the left arrow key goes to the previous image and the right arrow key skips to the next. Images also advance automatically after `--time` seconds with no key press.
+During a slideshow, a footer gutter shows the filename and, when present in EXIF, camera model and capture time. Escape quits after clearing the framebuffer. The left arrow key goes to the previous image and the right arrow key skips to the next. Images also advance automatically after `--time` seconds with no key press.
 
 The slideshow loops indefinitely. When the list is exhausted it restarts from the beginning; if `--random` was given the list is reshuffled before each loop.
 

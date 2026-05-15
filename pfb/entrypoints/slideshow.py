@@ -133,16 +133,6 @@ def main() -> None:
         action="store_true",
         help="Display images in random order",
     )
-    parser.add_argument(
-        "--timestamp",
-        action="store_true",
-        help="Overlay the EXIF timestamp in the bottom-left corner",
-    )
-    parser.add_argument(
-        "--model",
-        action="store_true",
-        help="Overlay the EXIF camera model in the bottom-left corner",
-    )
 
     args = parser.parse_args()
 
@@ -171,12 +161,7 @@ def main() -> None:
         path = files[index]
         print(f"displaying: {path}")
         try:
-            fb.display_image(
-                path,
-                show_timestamp=args.timestamp,
-                show_model=args.model,
-                slideshow_gutter=True,
-            )
+            fb.display_image(path, slideshow_gutter=True)
         except Exception as exc:
             print(f"pfb_slideshow: skipping {path}: {exc}", file=sys.stderr)
             index += 1
