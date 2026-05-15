@@ -57,7 +57,7 @@ symbols by their full dotted path (e.g. `tigerstop.adapter.TigerStop`,
 
 `<source>` for `pfb_slideshow` is either a directory path or a text file with one image path per line.
 
-During a slideshow, a footer gutter shows the filename and, when present in EXIF, camera model and capture time. Escape quits after clearing the framebuffer. The left arrow key goes to the previous image and the right arrow key skips to the next. Images also advance automatically after `--time` seconds with no key press.
+During a slideshow, a footer gutter shows the filename and, when present in EXIF, camera model and capture time. The console text cursor is hidden while the slideshow runs (VT-style tty) and restored on exit. Escape quits after clearing the framebuffer. The left arrow key goes to the previous image and the right arrow key skips to the next. Images also advance automatically after `--time` seconds with no key press.
 
 The slideshow loops indefinitely. When the list is exhausted it restarts from the beginning; if `--random` was given the list is reshuffled before each loop.
 

@@ -91,6 +91,22 @@ class TestCollectFilesFilter(unittest.TestCase):
             self.assertEqual(len(files), 1)
 
 
+class TestCursorTty(unittest.TestCase):
+    def test_set_visible_writes_show_sequence(self):
+        with unittest.mock.patch("os.write") as mock_write:
+            pfb.entrypoints.slideshow._tty_cursor_set_visible(5, visible=True)
+        mock_write.assert_called_once_with(5, b"\x1b[?25h")
+
+    def test_set_hidden_writes_hide_sequence(self):
+        with unittest.mock.patch("os.write") as mock_write:
+            pfb.entrypoints.slideshow._tty_cursor_set_visible(5, visible=False)
+        mock_write.assert_called_once_with(5, b"\x1b[?25l")
+
+    def test_os_write_failure_is_ignored(self):
+        with unittest.mock.patch("os.write", side_effect=OSError):
+            pfb.entrypoints.slideshow._tty_cursor_set_visible(1, visible=True)
+
+
 class TestReadKey(unittest.TestCase):
     def _call(self, stdin_bytes: bytes) -> str | None:
         # Mirror stdin by slicing the same buffer os.read would consume.
@@ -367,6 +383,29 @@ class TestSlideshowMain(unittest.TestCase):
             self.assertEqual(ctx.exception.code, 0)
             mock_fb.display_image.assert_called_once()
             mock_fb.clear.assert_called_once()
+
+    def test_quit_restores_cursor_visibility(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (pathlib.Path(tmpdir) / "a.jpg").touch()
+            (pathlib.Path(tmpdir) / "b.jpg").touch()
+            mock_fb = unittest.mock.MagicMock()
+            with unittest.mock.patch("sys.argv", ["pfb_slideshow", "/dev/fb0", tmpdir, "--time", "0"]):
+                with unittest.mock.patch("pfb.framebuffer.Framebuffer", return_value=mock_fb):
+                    with unittest.mock.patch(
+                        "pfb.entrypoints.slideshow._wait_for_key", return_value="quit"
+                    ):
+                        with unittest.mock.patch(
+                            "pfb.entrypoints.slideshow._choose_cursor_tty_fd", return_value=9
+                        ):
+                            with unittest.mock.patch(
+                                "pfb.entrypoints.slideshow._tty_cursor_set_visible"
+                            ) as mock_vis:
+                                with self.assertRaises(SystemExit) as ctx:
+                                    pfb.entrypoints.slideshow.main()
+            self.assertEqual(ctx.exception.code, 0)
+            calls = mock_vis.call_args_list
+            self.assertEqual(calls[0], unittest.mock.call(9, visible=False))
+            self.assertEqual(calls[-1], unittest.mock.call(9, visible=True))
 
 
 if __name__ == "__main__":

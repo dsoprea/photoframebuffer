@@ -17,6 +17,10 @@ import pfb.framebuffer
 _KEY_LEFT = b"\x1b[D"
 _KEY_RIGHT = b"\x1b[C"
 
+# DECTCEM: hide / show the hardware text cursor on VT-style consoles (linux framebuffer tty).
+_CURSOR_HIDE = b"\x1b[?25l"
+_CURSOR_SHOW = b"\x1b[?25h"
+
 
 def _collect_files(source: str, filter_pattern: str | None, root: str | None) -> list[str]:
     source_path = pathlib.Path(source)
@@ -39,6 +43,27 @@ def _collect_files(source: str, filter_pattern: str | None, root: str | None) ->
         files = [f for f in files if fnmatch.fnmatch(pathlib.Path(f).name, filter_pattern)]
 
     return files
+
+
+def _choose_cursor_tty_fd() -> int | None:
+    # Use stdout first, then stderr, when either is a tty (same console as the blinking cursor).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            fd = stream.fileno()
+        except (ValueError, OSError):
+            continue
+        if os.isatty(fd):
+            return fd
+    return None
+
+
+def _tty_cursor_set_visible(fd: int, visible: bool) -> None:
+    # Apply DECTCEM via raw write; ignore errors on pipes or consoles that ignore the sequence.
+    seq = _CURSOR_SHOW if visible else _CURSOR_HIDE
+    try:
+        os.write(fd, seq)
+    except OSError:
+        pass
 
 
 def _read_key(timeout: float) -> str | None:
@@ -142,39 +167,50 @@ def main() -> None:
         print("pfb_slideshow: no files found", file=sys.stderr)
         sys.exit(1)
 
-    # Shuffle the file list when random order is requested.
-    if args.random:
-        random.shuffle(files)
+    cursor_tty_fd = _choose_cursor_tty_fd()
 
-    # Open the framebuffer device once for the duration of the slideshow.
-    fb = pfb.framebuffer.Framebuffer(args.device)
+    try:
+        # Hide the console cursor so it does not blink over the framebuffer image.
+        if cursor_tty_fd is not None:
+            _tty_cursor_set_visible(cursor_tty_fd, visible=False)
 
-    # Iterate by index so left/right keys can move backwards and forwards.
-    index = 0
-    while True:
-        # When the end of the list is reached, reshuffle if requested and loop.
-        if index >= len(files):
-            if args.random:
-                random.shuffle(files)
-            index = 0
+        # Shuffle the file list when random order is requested.
+        if args.random:
+            random.shuffle(files)
 
-        path = files[index]
-        print(f"displaying: {path}")
-        try:
-            fb.display_image(path, slideshow_gutter=True)
-        except Exception as exc:
-            print(f"pfb_slideshow: skipping {path}: {exc}", file=sys.stderr)
-            index += 1
-            continue
+        # Open the framebuffer device once for the duration of the slideshow.
+        fb = pfb.framebuffer.Framebuffer(args.device)
 
-        # Wait for a navigation key or the display timeout.
-        key = _wait_for_key(args.time)
+        # Iterate by index so left/right keys can move backwards and forwards.
+        index = 0
+        while True:
+            # When the end of the list is reached, reshuffle if requested and loop.
+            if index >= len(files):
+                if args.random:
+                    random.shuffle(files)
+                index = 0
 
-        # Left moves to the previous image; right or timeout advances to the next.
-        if key == "left":
-            index = max(0, index - 1)
-        elif key == "quit":
-            fb.clear()
-            sys.exit(0)
-        elif key == "right" or key is None:
-            index += 1
+            path = files[index]
+            print(f"displaying: {path}")
+            try:
+                fb.display_image(path, slideshow_gutter=True)
+            except Exception as exc:
+                print(f"pfb_slideshow: skipping {path}: {exc}", file=sys.stderr)
+                index += 1
+                continue
+
+            # Wait for a navigation key or the display timeout.
+            key = _wait_for_key(args.time)
+
+            # Left moves to the previous image; right or timeout advances to the next.
+            if key == "left":
+                index = max(0, index - 1)
+            elif key == "quit":
+                fb.clear()
+                sys.exit(0)
+            elif key == "right" or key is None:
+                index += 1
+    finally:
+        # Always restore the cursor after slideshow ends or aborts.
+        if cursor_tty_fd is not None:
+            _tty_cursor_set_visible(cursor_tty_fd, visible=True)
