@@ -13,14 +13,17 @@ long period of time (with swap enabled).
 Drive from a folder of images:
 
 ```
-pfb_slideshow /dev/fb0 /images
+pfb_slideshow /dev/fb0 /images >/dev/null
 ```
 
 Displays randomized images from a text file with a list of relative file-paths and a display time of five minutes:
 
 ```
-pfb_slideshow /dev/fb0 /frame/images.txt --root /frame --time 300 --random
+pfb_slideshow /dev/fb0 /frame/images.txt --root /frame --time 300 --random >/dev/null
 ```
+
+We add the redirections to /dev/null because it's the most elegant way of
+suppressing erroneous text verbosity that might write into the displayed image.
 
 
 # Example Screenshot
