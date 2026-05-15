@@ -23,6 +23,11 @@ pfb_slideshow /dev/fb0 /frame/images.txt --root /frame --time 300 --random
 ```
 
 
+# Example Screenshot
+
+![Screenshot](asset/example1.jpg)
+
+
 # Features
 
 - Prints a gutter at the bottom of the display with filename, EXIF model, and EXIF timestamp
